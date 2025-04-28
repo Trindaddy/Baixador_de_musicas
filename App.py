@@ -1,56 +1,62 @@
 import yt_dlp
 import os
 import tkinter as tk
-from tkinter import messagebox
-from tkinter import filedialog
+from tkinter import messagebox, filedialog
+import threading
 
-def baixar_musicas(cantor, quantidade, duracao_maxima=600, pasta_destino='.'):
-    # Cria a pasta de destino, se não existir
-    if not os.path.exists(pasta_destino):
-        os.makedirs(pasta_destino)
-    
-    # Cria uma pasta com o nome do cantor dentro da pasta de destino
-    pasta_cantor = os.path.join(pasta_destino, cantor)
-    if not os.path.exists(pasta_cantor):
-        os.makedirs(pasta_cantor)
-    
-    # Configurações para o yt-dlp
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': os.path.join(pasta_cantor, '%(title)s.%(ext)s'),
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-    }
-
-    # Pesquisar músicas no YouTube
-    ydl = yt_dlp.YoutubeDL(ydl_opts)
-    query = f"{cantor} músicas"
-    
+def baixar_musicas(cantor, quantidade, pasta_destino='.', atualizar_status=None):
     try:
+        if not os.path.exists(pasta_destino):
+            os.makedirs(pasta_destino)
+
+        pasta_cantor = os.path.join(pasta_destino, cantor)
+        os.makedirs(pasta_cantor, exist_ok=True)
+
+        # Caminho para o ffmpeg local (bin/ffmpeg.exe)
+        ffmpeg_path = os.path.join(os.getcwd(), 'bin', 'ffmpeg.exe')
+
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': os.path.join(pasta_cantor, '%(title)s.%(ext)s'),
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'ffmpeg_location': ffmpeg_path,  # Direto aqui
+            'quiet': True,
+        }
+
+        ydl = yt_dlp.YoutubeDL(ydl_opts)
+        query = f"{cantor} músicas"
+
+        if atualizar_status:
+            atualizar_status("Buscando músicas...")
+
         info = ydl.extract_info(f"ytsearch{quantidade * 2}:{query}", download=False)
+
+        duracao_maxima = 600  # 10 minutos
+        musicas_filtradas = []
+        for entry in info['entries']:
+            if entry['duration'] <= duracao_maxima:
+                musicas_filtradas.append(entry)
+            if len(musicas_filtradas) >= quantidade:
+                break
+
+        if len(musicas_filtradas) == 0:
+            messagebox.showwarning("Nenhuma música encontrada", "Não foi possível encontrar músicas com esses critérios.")
+            return
+
+        for idx, musica in enumerate(musicas_filtradas, start=1):
+            if atualizar_status:
+                atualizar_status(f"Baixando ({idx}/{len(musicas_filtradas)}): {musica['title']}")
+            ydl.download([musica['webpage_url']])
+
+        if atualizar_status:
+            atualizar_status("Download concluído!")
+
     except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao buscar músicas: {e}")
-        return
-
-    musicas_filtradas = []
-    for entry in info['entries']:
-        if entry['duration'] <= duracao_maxima:
-            musicas_filtradas.append(entry)
-        if len(musicas_filtradas) >= quantidade:
-            break
-
-    if len(musicas_filtradas) < quantidade:
-        messagebox.showinfo("Aviso", f"Encontradas apenas {len(musicas_filtradas)} músicas para o cantor {cantor}.")
-
-    for musica in musicas_filtradas:
-        link = musica['webpage_url']
-        try:
-            ydl.download([link])
-        except Exception as e:
-            print(f"Erro ao baixar a música {musica['title']}: {e}")
+        messagebox.showerror("Erro", f"Ocorreu um erro: {e}")
 
 def selecionar_pasta():
     pasta = filedialog.askdirectory()
@@ -58,61 +64,61 @@ def selecionar_pasta():
         entrada_pasta.delete(0, tk.END)
         entrada_pasta.insert(0, pasta)
 
+def iniciar_download_thread():
+    t = threading.Thread(target=iniciar_download)
+    t.start()
+
 def iniciar_download():
     cantor = entrada_cantor.get()
     quantidade = entrada_quantidade.get()
-    duracao_maxima = entrada_duracao.get()
     pasta_destino = entrada_pasta.get()
 
-    if not cantor or not quantidade or not duracao_maxima:
-        messagebox.showerror("Erro", "Por favor, preencha todos os campos obrigatórios.")
+    if not cantor or not quantidade:
+        messagebox.showerror("Erro", "Preencha todos os campos.")
         return
 
     try:
         quantidade = int(quantidade)
-        duracao_maxima = int(duracao_maxima)
     except ValueError:
-        messagebox.showerror("Erro", "Quantidade e duração devem ser números inteiros.")
+        messagebox.showerror("Erro", "Quantidade precisa ser um número inteiro.")
         return
-
-    minutos = duracao_maxima // 60
-    segundos_restantes = duracao_maxima % 60
-    messagebox.showinfo("Duração informada", f"{duracao_maxima} segundos equivalem a {minutos} minutos e {segundos_restantes} segundos.")
 
     if not pasta_destino:
         pasta_destino = '.'
 
-    baixar_musicas(cantor, quantidade, duracao_maxima, pasta_destino)
-    messagebox.showinfo("Concluído", "Download das músicas finalizado!")
+    status_label.config(text="Iniciando download...")
+    baixar_musicas(cantor, quantidade, pasta_destino, atualizar_status=lambda msg: status_label.config(text=msg))
 
-# Criar janela
+# --- Janela principal
 janela = tk.Tk()
-janela.title("Baixar Músicas do YouTube")
-janela.geometry("400x400")
+janela.title("Downloader de Músicas 🎵")
+janela.geometry("450x350")
 janela.resizable(False, False)
 
-# Rótulos e Entradas
-tk.Label(janela, text="Nome do cantor:").pack(pady=5)
-entrada_cantor = tk.Entry(janela, width=50)
-entrada_cantor.pack()
+# --- Layout
+frame = tk.Frame(janela, padx=20, pady=20)
+frame.pack(expand=True)
 
-tk.Label(janela, text="Quantidade de músicas:").pack(pady=5)
-entrada_quantidade = tk.Entry(janela, width=50)
-entrada_quantidade.pack()
+tk.Label(frame, text="Nome do cantor:", anchor="w").pack(fill='x')
+entrada_cantor = tk.Entry(frame)
+entrada_cantor.pack(fill='x', pady=5)
 
-tk.Label(janela, text="Duração máxima (segundos):").pack(pady=5)
-entrada_duracao = tk.Entry(janela, width=50)
-entrada_duracao.pack()
+tk.Label(frame, text="Quantidade de músicas:", anchor="w").pack(fill='x')
+entrada_quantidade = tk.Entry(frame)
+entrada_quantidade.pack(fill='x', pady=5)
 
-tk.Label(janela, text="Pasta de destino:").pack(pady=5)
-entrada_pasta = tk.Entry(janela, width=40)
-entrada_pasta.pack(side=tk.LEFT, padx=(20, 5), pady=10)
+tk.Label(frame, text="Pasta de destino:", anchor="w").pack(fill='x')
+pasta_frame = tk.Frame(frame)
+pasta_frame.pack(fill='x', pady=5)
 
-botao_selecionar = tk.Button(janela, text="Selecionar", command=selecionar_pasta)
-botao_selecionar.pack(side=tk.LEFT)
+entrada_pasta = tk.Entry(pasta_frame)
+entrada_pasta.pack(side=tk.LEFT, expand=True, fill='x')
+tk.Button(pasta_frame, text="Selecionar", command=selecionar_pasta, bg="lightblue").pack(side=tk.LEFT, padx=5)
 
-# Botão para iniciar
-tk.Button(janela, text="Baixar Músicas", command=iniciar_download, bg="green", fg="white", font=('Arial', 12, 'bold')).pack(pady=20)
+tk.Button(frame, text="Baixar Músicas", command=iniciar_download_thread, bg="green", fg="white", font=('Arial', 12, 'bold')).pack(pady=15)
 
-# Rodar o aplicativo
+status_label = tk.Label(janela, text="Aguardando...", relief='sunken', anchor='w')
+status_label.pack(fill='x', side='bottom')
+
+# --- Rodar o app
 janela.mainloop()
