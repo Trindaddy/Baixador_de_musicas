@@ -20,7 +20,7 @@ Este projeto permite baixar músicas do YouTube em formato MP3 de um cantor ou b
 
 1. Clone este repositório:
     ```bash
-    git clone https://github.com/seuusuario/downloader-musicas-youtube.git
+    git clone https://github.com/trindaddy/downloader-musicas-youtube.git
     ```
 
 2. Navegue até o diretório do projeto:
