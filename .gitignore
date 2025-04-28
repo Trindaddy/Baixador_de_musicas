@@ -1,0 +1,14 @@
+# Arquivos do Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Arquivos temporários do sistema
+*.swp
+*.swo
+
+# Dependências
+/venv/
+
+# FFmpeg e outros arquivos binários
+ffmpeg*
